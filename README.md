@@ -10,7 +10,7 @@ Transforme seu terminal em uma verdadeira interface gráfica para Kubernetes —
 
 ![Dashboard do K8s](docs/img/dashboard.png)
 ![Pod](docs/img/list-pods.png)
-![Describe](docs/img/describe-pod.png)
+![Describe](docs/img/describe.png)
 
 ---
 
@@ -44,7 +44,7 @@ No total são **48+ funcionalidades integradas** em um único dashboard 🎯
 ### 1. Clone o repositório:
 
 ```bash
-    git clone https://github.com/<seu-user>/<seu-repo>.git
-    cd <seu-repo>
+    git clone git@github.com:Diegosny/kpnael.git
+    cd kpanel
     chmod +x install.sh
     ./install.sh
