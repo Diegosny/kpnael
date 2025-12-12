@@ -1,4 +1,4 @@
-# 🚀 Kubernetes Dashboard CLI – PRO MAX
+# 🚀 Kubernetes Dashboard Kpanel
 
 Um painel interativo, moderno e super completo para gerenciar clusters Kubernetes **direto do terminal**, usando **GUM (Charm)** e `kubectl`.
 
@@ -11,8 +11,6 @@ Transforme seu terminal em uma verdadeira interface gráfica para Kubernetes —
 > ⚠️ Substitua pelas suas imagens (apenas exemplos)
 
 ![Dashboard](assets/dashboard.png)
-
-
 ![Menu](assets/menu.png)
 ![Logs](assets/logs.png)
 
@@ -22,8 +20,8 @@ Transforme seu terminal em uma verdadeira interface gráfica para Kubernetes —
 
 - Interface de Terminal moderna usando **GUM**
 - Compatível com qualquer cluster K8s (local, cloud, k3s, minikube)
-- Multi-namespace + multi-contexto (troque entre clusters)
-- Busca global instantânea (grep em todos os recursos)
+- Multi-namespace + multi-contexto
+- Busca global instantânea
 - Favoritos de pods/recursos
 - Health-check visual com status por pod
 - Backup automático de ConfigMaps e Secrets
@@ -39,14 +37,16 @@ Transforme seu terminal em uma verdadeira interface gráfica para Kubernetes —
 - Top nodes/pods (CPU/Mem)
 - E muito mais…
 
-No total são **48+ funcionalidades integradas** em um único dashboard CLI 🎯
+No total são **48+ funcionalidades integradas** em um único dashboard 🎯
 
 ---
 
-## 📦 Instalação
+## 📦 Instalação Automática
 
-### 1. Instale o GUM (Charm)
+### 1. Clone o repositório:
 
-#### 💻 Linux/Mac:
 ```bash
-curl -fsSL https://gum.style/install.sh | sudo bash
+git clone https://github.com/<seu-user>/<seu-repo>.git
+cd <seu-repo>
+chmod +x install.sh
+./install.sh
