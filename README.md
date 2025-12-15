@@ -48,3 +48,4 @@ No total são **48+ funcionalidades integradas** em um único dashboard 🎯
     cd kpanel
     chmod +x install.sh
     ./install.sh
+    kpanel
