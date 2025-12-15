@@ -85,9 +85,6 @@ echo ""
 echo "✅ Todas as dependências instaladas!"
 echo ""
 
-# ---------------------------------------------------------
-# Instalar kpanel
-# ---------------------------------------------------------
 if [[ ! -f "$SCRIPT_NAME" ]]; then
   echo "❌ Erro: $SCRIPT_NAME não encontrado no diretório atual."
   exit 1
@@ -103,9 +100,6 @@ echo "🎉 Instalação concluída com sucesso!"
 echo "👉 Execute o dashboard com o comando: $BIN_NAME"
 echo ""
 
-# ---------------------------------------------------------
-# Executar agora?
-# ---------------------------------------------------------
 read -p "Deseja abrir o dashboard agora? (y/N): " open_now
 if [[ "$open_now" =~ ^[Yy]$ ]]; then
   "$BIN_NAME"

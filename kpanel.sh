@@ -7,9 +7,6 @@
 
 set -euo pipefail
 
-# ---------------------------------------------------------
-# Configuração
-# ---------------------------------------------------------
 BASE_DIR="$HOME/.k8s-dashboard"
 CACHE_DIR="$BASE_DIR/cache"
 FAV_DIR="$BASE_DIR/favs"
@@ -17,22 +14,15 @@ BACKUP_DIR="$BASE_DIR/backups"
 
 mkdir -p "$CACHE_DIR" "$FAV_DIR" "$BACKUP_DIR"
 
-# Namespace atual
 ns=$(kubectl config view --minify -o jsonpath='{..namespace}' 2>/dev/null || true)
 ns=${ns:-default}
 
-# ---------------------------------------------------------
-# Ícones
-# ---------------------------------------------------------
 icon_pod="📦"
 icon_deploy="🚀"
 icon_svc="🔌"
 icon_cm="🧩"
 icon_secret="🔐"
 
-# ---------------------------------------------------------
-# FZF com preview ativado por TAB
-# ---------------------------------------------------------
 fzf_with_preview() {
   local prompt="$1"
   local type="$2"
@@ -70,9 +60,6 @@ fzf_with_preview() {
     --bind "tab:toggle-preview"
 }
 
-# ---------------------------------------------------------
-# Seletores
-# ---------------------------------------------------------
 select_pod() {
   kubectl get pods -n "$ns" --no-headers \
     | awk "{print \"$icon_pod \" \$1}" \
@@ -108,9 +95,6 @@ select_secret() {
     | fzf_with_preview "Secret" "secret"
 }
 
-# ---------------------------------------------------------
-# Contexto / Namespace
-# ---------------------------------------------------------
 select_context() {
   ctx=$(kubectl config get-contexts --no-headers | awk '{print $2}' | fzf)
   kubectl config use-context "$ctx"
@@ -122,9 +106,6 @@ set_namespace() {
   ns=$(kubectl get ns --no-headers | awk '{print $1}' | fzf)
 }
 
-# ---------------------------------------------------------
-# Funcionalidades
-# ---------------------------------------------------------
 add_fav() {
   echo "$ns:$1" >> "$FAV_DIR/pods.txt"
   gum style --foreground 46 "⭐ Pod adicionado aos favoritos!"
@@ -153,9 +134,6 @@ health_check() {
   ' | gum pager
 }
 
-# ---------------------------------------------------------
-# 🌍 Busca Global
-# ---------------------------------------------------------
 global_resource_search() {
   kubectl api-resources --verbs=list --namespaced -o name \
     | while read -r res; do
@@ -170,9 +148,6 @@ global_resource_search() {
         --preview "kubectl get {1} {3} -n {2} -o yaml 2>/dev/null | head -200"
 }
 
-# ---------------------------------------------------------
-# UI
-# ---------------------------------------------------------
 dashboard() {
   clear
   gum style --border normal --margin 1 --padding 1 --border-foreground 212 "
@@ -185,9 +160,6 @@ TAB → Preview | Busca fuzzy em tudo
 "
 }
 
-# ---------------------------------------------------------
-# MENU COM BUSCADOR
-# ---------------------------------------------------------
 while true; do
   dashboard
 
