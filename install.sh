@@ -1,8 +1,10 @@
 #!/bin/bash
 set -e
 
-SCRIPT_NAME="kpanel.sh"
-BIN_NAME="kpanel"
+SCRIPT_NAME_KPANEL="kpanel.sh"
+SCRIPT_NAME_DPNAEL="dpanel.sh"
+BIN_NAME_KPANEL="kpanel"
+BIN_NAME_DPANEL="dpanel"
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -85,22 +87,31 @@ echo ""
 echo "✅ Todas as dependências instaladas!"
 echo ""
 
-if [[ ! -f "$SCRIPT_NAME" ]]; then
-  echo "❌ Erro: $SCRIPT_NAME não encontrado no diretório atual."
+if [[ ! -f "$SCRIPT_NAME_KPANEL" ]]; then
+  echo "❌ Erro: $SCRIPT_NAME_KPANEL não encontrado no diretório atual."
   exit 1
 fi
 
-echo "🚀 Instalando '$BIN_NAME' globalmente..."
+if [[ ! -f "$SCRIPT_NAME_DPNAEL" ]]; then
+  echo "❌ Erro: $SCRIPT_NAME_DPNAEL não encontrado no diretório atual."
+  exit 1
+fi
 
-sudo cp "$SCRIPT_NAME" /usr/local/bin/"$BIN_NAME"
-sudo chmod +x /usr/local/bin/"$BIN_NAME"
+echo "🚀 Instalando '$BIN_NAME_KPANEL' globalmente..."
+echo "🚀 Instalando '$BIN_NAME_DPANEL' globalmente..."
+
+sudo cp "$SCRIPT_NAME_KPANEL" /usr/local/bin/"$BIN_NAME_KPANEL"
+sudo chmod +x /usr/local/bin/"$BIN_NAME_KPANEL"
+
+sudo cp "$SCRIPT_NAME_DPNAEL" /usr/local/bin/"$BIN_NAME_DPANEL"
+sudo chmod +x /usr/local/bin/"$BIN_NAME_DPANEL"
 
 echo ""
 echo "🎉 Instalação concluída com sucesso!"
-echo "👉 Execute o dashboard com o comando: $BIN_NAME"
+echo "👉 Execute o dashboard com o comando: $BIN_NAME_KPANEL"
 echo ""
 
 read -p "Deseja abrir o dashboard agora? (y/N): " open_now
 if [[ "$open_now" =~ ^[Yy]$ ]]; then
-  "$BIN_NAME"
+  "$BIN_NAME_KPANEL"
 fi
