@@ -1,10 +1,12 @@
 #!/bin/bash
 set -e
 
-SCRIPT_NAME_KPANEL="kpanel.sh"
-SCRIPT_NAME_DPNAEL="dpanel.sh"
-BIN_NAME_KPANEL="kpanel"
-BIN_NAME_DPANEL="dpanel"
+# Configurações de Nomes
+SCRIPT_KPNAEL="kpnael.sh"
+BIN_KPNAEL="kpnael"
+
+SCRIPT_DPNAEL="dpnael.sh"
+BIN_DPNAEL="dpnael"
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -20,6 +22,9 @@ esac
 echo "✅ Plataforma detectada: $PLATFORM ($ARCH)"
 echo ""
 
+# ---------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------
 install_if_missing() {
   local cmd="$1"
   local name="$2"
@@ -33,7 +38,9 @@ install_if_missing() {
   fi
 }
 
-# --- macOS ---
+# ---------------------------------------------------------
+# macOS
+# ---------------------------------------------------------
 if [[ "$PLATFORM" == "mac" ]]; then
   if ! command -v brew &>/dev/null; then
     echo "🍺 Homebrew não encontrado. Instalando..."
@@ -43,33 +50,77 @@ if [[ "$PLATFORM" == "mac" ]]; then
   install_if_missing kubectl "kubectl" "brew install kubectl"
   install_if_missing gum "gum" "brew install gum"
   install_if_missing fzf "fzf" "brew install fzf"
-  install_if_missing glow "glow" "brew install glow"
+  install_if_missing jq "jq" "brew install jq"
 fi
 
-# --- Linux ---
+# ---------------------------------------------------------
+# Linux
+# ---------------------------------------------------------
 if [[ "$PLATFORM" == "linux" ]]; then
   if command -v apt &>/dev/null; then
     sudo apt update
-    install_if_missing kubectl "kubectl" "curl -L \"https://dl.k8s.io/release/\$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl\" -o /tmp/kubectl && sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl"
+
+    install_if_missing kubectl "kubectl" "
+      curl -fsSL https://dl.k8s.io/release/\$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl |
+      sudo tee /usr/local/bin/kubectl >/dev/null &&
+      sudo chmod +x /usr/local/bin/kubectl
+    "
+
     install_if_missing fzf "fzf" "sudo apt install -y fzf"
-    install_if_missing gum "gum" "curl -fsSL https://gum.style/install.sh | bash && sudo cp ~/.gum/bin/gum /usr/local/bin/"
-    
-    # Instalando Glow via repositório Charm
-    if ! command -v glow &>/dev/null; then
-      echo "📦 Instalando glow..."
+    install_if_missing jq "jq" "sudo apt install -y jq"
+
+    # Instalação do Gum via repositório oficial Charm (mais estável que o script)
+    install_if_missing gum "gum" "
       sudo mkdir -p /etc/apt/keyrings
       curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
-      echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
-      sudo apt update && sudo apt install -y glow
-    fi
+      echo \"deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *\" | sudo tee /etc/apt/sources.list.d/charm.list
+      sudo apt update && sudo apt install -y gum
+    "
   else
-    echo "⚠️ Gerenciador de pacotes não suportado automaticamente para dependências completas."
-    exit 1
+    echo "⚠️ Gerenciador de pacotes não suportado automaticamente (apenas APT)."
+    echo "Certifique-se de ter instalado manualmente: kubectl, gum, fzf, jq"
   fi
 fi
 
-echo "🚀 Instalando binários globais..."
-sudo cp "$SCRIPT_NAME_KPANEL" /usr/local/bin/"$BIN_NAME_KPANEL" && sudo chmod +x /usr/local/bin/"$BIN_NAME_KPANEL"
-sudo cp "$SCRIPT_NAME_DPNAEL" /usr/local/bin/"$BIN_NAME_DPANEL" && sudo chmod +x /usr/local/bin/"$BIN_NAME_DPANEL"
+echo ""
+echo "✅ Verificação de dependências concluída!"
+echo ""
 
-echo "🎉 Instalação concluída! Execute: $BIN_NAME_KPANEL"
+# ---------------------------------------------------------
+# Validação dos Arquivos
+# ---------------------------------------------------------
+if [[ ! -f "$SCRIPT_KPNAEL" ]]; then
+  echo "❌ Erro: O arquivo '$SCRIPT_KPNAEL' não foi encontrado nesta pasta."
+  exit 1
+fi
+
+if [[ ! -f "$SCRIPT_DPNAEL" ]]; then
+  echo "❌ Erro: O arquivo '$SCRIPT_DPNAEL' não foi encontrado nesta pasta."
+  exit 1
+fi
+
+# ---------------------------------------------------------
+# Instalação dos Binários
+# ---------------------------------------------------------
+echo "🚀 Instalando '$BIN_KPNAEL' e '$BIN_DPNAEL' em /usr/local/bin..."
+
+sudo cp "$SCRIPT_KPNAEL" /usr/local/bin/"$BIN_KPNAEL"
+sudo chmod +x /usr/local/bin/"$BIN_KPNAEL"
+
+sudo cp "$SCRIPT_DPNAEL" /usr/local/bin/"$BIN_DPNAEL"
+sudo chmod +x /usr/local/bin/"$BIN_DPNAEL"
+
+echo ""
+echo "🎉 Instalação concluída com sucesso!"
+echo "👉 Comandos disponíveis: $BIN_KPNAEL e $BIN_DPNAEL"
+echo ""
+
+# Pergunta interativa sobre o que fazer agora
+echo "O que deseja fazer agora?"
+ESCOLHA=$(gum choose "☸️  Abrir kpnael (Kubernetes)" "🐳 Abrir dpnael (Docker)" "❌ Sair")
+
+case "$ESCOLHA" in
+  "☸️  Abrir kpnael (Kubernetes)") "$BIN_KPNAEL" ;;
+  "🐳 Abrir dpnael (Docker)")      "$BIN_DPNAEL" ;;
+  "❌ Sair")                       echo "Tudo pronto! Use os comandos quando precisar." ;;
+esac
