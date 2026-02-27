@@ -22,6 +22,7 @@ fzf_with_preview() {
     deploy) preview_cmd="kubectl describe deploy {} -n $ns" ;;
     secret) preview_cmd="kubectl describe secret {} -n $ns" ;;
     cj)     preview_cmd="kubectl describe cronjob {} -n $ns" ;;
+    configmap) preview_cmd="kubectl describe configmap {} -n $ns" ;;
     *)      preview_cmd="echo 'Sem preview disponível'" ;;
   esac
 
@@ -66,7 +67,6 @@ view_env() {
   [[ -z "$cont" ]] && return
   
   gum style --foreground 212 "🔍 Buscando arquivo .env no pod $pod..."
-  
   local env_data=$(kubectl exec "$pod" -c "$cont" -n "$ns" -- sh -c 'cat .env 2>/dev/null || cat /.env 2>/dev/null || cat /app/.env 2>/dev/null' || true)
   
   if [[ -z "$env_data" ]]; then
@@ -122,13 +122,10 @@ rollback_deploy() {
 
 clean_failed_pods() {
   local bad_pods=$(kubectl get pods --field-selector status.phase=Failed -n "$ns" --no-headers 2>/dev/null || true)
-  
   if [[ -z "$bad_pods" ]]; then
     gum style --foreground 46 "✨ Tudo limpo!"
-    sleep 1
-    return
+    sleep 1; return
   fi
-
   if gum confirm "Deseja deletar pods com erro?"; then
     kubectl delete pods --field-selector status.phase=Failed -n "$ns" | gum pager
   fi
@@ -153,6 +150,70 @@ set_image() {
   [[ -n "$new_img" ]] && kubectl set image deploy/"$deploy" "$container"="$new_img" -n "$ns"
 }
 
+view_events() {
+  kubectl get events -n "$ns" --sort-by='.lastTimestamp' | gum pager
+}
+
+live_edit() {
+  local kind=$(printf "configmap\nsecret" | fzf --prompt="Tipo > " --height=30% || echo "")
+  [[ -z "$kind" ]] && return
+  local res=$(select_resource "$kind" "📝")
+  [[ -z "$res" ]] && return
+  kubectl edit "$kind" "$res" -n "$ns"
+}
+
+helm_dashboard() {
+  if ! command -v helm &>/dev/null; then
+    gum style --foreground 160 "❌ Helm não instalado."
+    sleep 2; return
+  fi
+  local release=$(helm ls -n "$ns" --short | fzf --prompt="Release > " --height=40% || echo "")
+  [[ -z "$release" ]] && return
+  local action=$(printf "📜 Ver Valores\n🔄 Status\n⏪ Rollback" | fzf --prompt="Ação > " --height=40% || echo "")
+  case "${action#* }" in
+    "Ver Valores") helm get values "$release" -n "$ns" | gum pager ;;
+    "Status")      helm status "$release" -n "$ns" | gum pager ;;
+    "Rollback")
+      local rev=$(helm history "$release" -n "$ns" | fzf --prompt="Revisão > " | awk '{print $1}')
+      [[ -n "$rev" ]] && gum confirm "Reverter para revisão $rev?" && helm rollback "$release" "$rev" -n "$ns" ;;
+  esac
+}
+
+debug_pod() {
+  gum style --foreground 212 "🚀 Iniciando Pod de Debug (netshoot)..."
+  kubectl run "kpnael-debug-$(date +%s)" --rm -i --tty --image=nicolaka/netshoot -n "$ns" -- /bin/bash
+}
+
+oom_hunter() {
+  gum style --foreground 212 "💀 Caçando Pods OOMKilled no namespace $ns..."
+  local oom=$(kubectl get pods -n "$ns" -o jsonpath='{range .items[*]}{.metadata.name}{" - "}{range .status.containerStatuses[*]}{.lastState.terminated.reason}{"\n"}{end}{end}' | grep OOMKilled || true)
+  if [[ -z "$oom" ]]; then
+    gum style --foreground 46 "✅ Nenhum Pod OOMKilled encontrado!"
+    sleep 2
+  else
+    echo "$oom" | gum pager
+  fi
+}
+
+create_namespace() {
+  local new_ns=$(gum input --placeholder "Nome do novo namespace (ex: meu-projeto):")
+  [[ -z "$new_ns" ]] && return
+
+  if kubectl get ns "$new_ns" >/dev/null 2>&1; then
+    gum style --foreground 160 "❌ O namespace '$new_ns' já existe."
+    sleep 2
+  else
+    gum style --foreground 212 "⏳ Criando namespace '$new_ns'..."
+    kubectl create namespace "$new_ns" >/dev/null
+    gum style --foreground 46 "✅ Namespace criado com sucesso!"
+    
+    if gum confirm "Deseja mudar para este namespace agora?"; then
+      kubectl config set-context --current --namespace="$new_ns" >/dev/null
+      ns="$new_ns"
+    fi
+  fi
+}
+
 while true; do
   clear
   ctx=$(kubectl config current-context)
@@ -165,6 +226,11 @@ while true; do
     "🐚 Shell (Exec)" \
     "📄 Ver .env" \
     "🔓 Decodificar Secret" \
+    "⚠️  Radar de Eventos" \
+    "✏️  Editor (ConfigMap/Secret)" \
+    "🚀 Helm Dashboard" \
+    "🕵️  Pod de Debug (Netshoot)" \
+    "💀 Caçador de OOMKilled" \
     "⏪ Rollback" \
     "⏳ Disparar CronJob" \
     "⚖️  Scale" \
@@ -173,9 +239,10 @@ while true; do
     "🔌 Port-Forward" \
     "📊 Métricas" \
     "🌐 Contexto/Namespace" \
+    "➕ Criar Namespace" \
     "💾 Backup" \
     "❌ Sair" \
-    | fzf --prompt="Menu > " --height=85% --reverse --border)
+    | fzf --prompt="Menu > " --height=90% --reverse --border)
 
   case "$action" in
     "🔎 Logs (Filtrar)") filter_logs ;;
@@ -193,6 +260,11 @@ while true; do
       [[ -n "$pod" && -n "$cont" ]] && (kubectl exec -it "$pod" -c "$cont" -n "$ns" -- bash 2>/dev/null || kubectl exec -it "$pod" -c "$cont" -n "$ns" -- sh) ;;
     "📄 Ver .env") view_env ;;
     "🔓 Decodificar Secret") decode_secret ;;
+    "⚠️  Radar de Eventos") view_events ;;
+    "✏️  Editor (ConfigMap/Secret)") live_edit ;;
+    "🚀 Helm Dashboard") helm_dashboard ;;
+    "🕵️  Pod de Debug (Netshoot)") debug_pod ;;
+    "💀 Caçador de OOMKilled") oom_hunter ;;
     "⏪ Rollback") rollback_deploy ;;
     "⏳ Disparar CronJob") trigger_cronjob ;;
     "⚖️  Scale") scale_resource ;;
@@ -217,6 +289,7 @@ while true; do
         ns_temp=$(kubectl get ns -o name | sed 's|namespace/||' | fzf)
         [[ -n "$ns_temp" ]] && ns="$ns_temp"
       } ;;
+    "➕ Criar Namespace") create_namespace ;;
     "💾 Backup")
       ts=$(date +%s); mkdir -p "$BASE_DIR/backups/$ns"
       kubectl get cm,secret -n "$ns" -o yaml > "$BASE_DIR/backups/$ns/backup-$ts.yaml"
