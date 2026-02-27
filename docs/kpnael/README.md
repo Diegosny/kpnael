@@ -9,7 +9,6 @@ Transforme seu terminal em uma verdadeira interface gráfica para Kubernetes. Es
 ## ✨ Demonstração
 
 ![Dashboard do K8s](docs/img/dashboard.png)
-*(Adicione as imagens do seu painel aqui)*
 
 ---
 
