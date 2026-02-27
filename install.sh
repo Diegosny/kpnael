@@ -21,6 +21,11 @@ esac
 echo "🚀 Iniciando instalação do KPNAEL & DPNAEL..."
 
 
+echo "🔐 Precisamos de permissão para instalar os binários no sistema."
+sudo -v < /dev/tty || { echo "❌ Instalação cancelada. Senha necessária."; exit 1; }
+
+sudo mkdir -p /usr/local/bin
+
 install_if_missing() {
   local cmd="$1"
   local install_cmd="$3"
@@ -31,10 +36,11 @@ install_if_missing() {
 }
 
 if [[ "$PLATFORM" == "mac" ]]; then
-  install_if_missing kubectl "kubectl" "brew install kubectl"
-  install_if_missing gum "gum" "brew install gum"
-  install_if_missing fzf "fzf" "brew install fzf"
-  install_if_missing jq "jq" "brew install jq"
+  export HOMEBREW_NO_ENV_HINTS=1 # Esconde as dicas do Homebrew
+  install_if_missing kubectl "kubectl" "brew install --quiet kubectl"
+  install_if_missing gum "gum" "brew install --quiet gum"
+  install_if_missing fzf "fzf" "brew install --quiet fzf"
+  install_if_missing jq "jq" "brew install --quiet jq"
 fi
 
 if [[ "$PLATFORM" == "linux" ]]; then
@@ -49,13 +55,14 @@ if [[ "$PLATFORM" == "linux" ]]; then
   fi
 fi
 
+
 echo "📥 Baixando scripts do GitHub..."
 
-sudo curl -fsSL "$URL_KPNAEL" -o /usr/local/bin/"$BIN_KPNAEL"
-sudo chmod +x /usr/local/bin/"$BIN_KPNAEL"
+sudo curl -fsSL "$URL_KPNAEL" -o /usr/local/bin/"$BIN_KPNAEL" < /dev/tty
+sudo chmod +x /usr/local/bin/"$BIN_KPNAEL" < /dev/tty
 
-sudo curl -fsSL "$URL_DPNAEL" -o /usr/local/bin/"$BIN_DPNAEL"
-sudo chmod +x /usr/local/bin/"$BIN_DPNAEL"
+sudo curl -fsSL "$URL_DPNAEL" -o /usr/local/bin/"$BIN_DPNAEL" < /dev/tty
+sudo chmod +x /usr/local/bin/"$BIN_DPNAEL" < /dev/tty
 
 echo "✅ Instalação concluída com sucesso!"
 
