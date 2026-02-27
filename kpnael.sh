@@ -199,6 +199,28 @@ oom_hunter() {
   fi
 }
 
+audit_resources() {
+  gum style --foreground 212 "📊 Auditoria: Limites e Requisições (Namespace: $ns)..."
+  kubectl get pods -n "$ns" -o custom-columns="POD:.metadata.name,CPU-REQ:.spec.containers[*].resources.requests.cpu,CPU-LIM:.spec.containers[*].resources.limits.cpu,MEM-REQ:.spec.containers[*].resources.requests.memory,MEM-LIM:.spec.containers[*].resources.limits.memory" | gum pager || { gum style --foreground 160 "❌ Erro ao auditar recursos."; sleep 2; }
+}
+
+rbac_tester() {
+  local sa=$(kubectl get sa -n "$ns" --no-headers 2>/dev/null | awk '{print $1}' | fzf --prompt="ServiceAccount > " || echo "")
+  [[ -z "$sa" ]] && return
+  gum style --foreground 212 "🔐 Avaliando permissões da ServiceAccount: $sa..."
+  kubectl auth can-i --list --as="system:serviceaccount:$ns:$sa" -n "$ns" | gum pager
+}
+
+manage_storage() {
+  local pvc=$(kubectl get pvc -n "$ns" --no-headers 2>/dev/null | awk '{print $1}' | fzf --prompt="PVC > " --preview="kubectl describe pvc {} -n $ns" || echo "")
+  [[ -z "$pvc" ]] && return
+  local action=$(printf "📝 Editar YAML\n🗑️ Deletar PVC" | fzf --prompt="Ação > " --height=30% || echo "")
+  case "${action#* }" in
+    "Editar YAML") kubectl edit pvc "$pvc" -n "$ns" ;;
+    "Deletar PVC") gum confirm "Deletar PVC $pvc de forma permanente?" && kubectl delete pvc "$pvc" -n "$ns" ;;
+  esac
+}
+
 create_namespace() {
   local new_ns=$(gum input --placeholder "Nome do novo namespace:")
   [[ -z "$new_ns" ]] && return
@@ -237,6 +259,9 @@ while true; do
     "🚀 Helm Dashboard" \
     "🕵️  Pod de Debug (Netshoot)" \
     "💀 Caçador de OOMKilled" \
+    "💰 Auditor de Recursos" \
+    "🔐 Testar RBAC (Permissões)" \
+    "💾 Gerenciar Storage (PVC)" \
     "⏪ Rollback" \
     "⏳ Disparar CronJob" \
     "⚖️  Scale" \
@@ -248,7 +273,7 @@ while true; do
     "➕ Criar Namespace" \
     "💾 Backup" \
     "❌ Sair" \
-    | fzf --prompt="Menu > " --height=90% --reverse --border || echo "")
+    | fzf --prompt="Menu > " --height=95% --reverse --border || echo "")
 
   case "$action" in
     "🔎 Logs (Filtrar)") filter_logs ;;
@@ -263,7 +288,7 @@ while true; do
     "🐚 Shell (Exec)")
       pod=$(select_resource "pod" "📦")
       [[ -n "$pod" ]] && cont=$(select_container "$pod")
-      [[ -n "$pod" && -n "$cont" ]] && (kubectl exec -it "$pod" -c "$cont" -n "$ns" -- bash 2>/dev/null || kubectl exec -it "$pod" -c "$cont" -n "$ns" -- sh || { gum style --foreground 160 "❌ Erro de conexão. O Pod está Running?"; sleep 3; }) ;;
+      [[ -n "$pod" && -n "$cont" ]] && (kubectl exec -it "$pod" -c "$cont" -n "$ns" -- bash 2>/dev/null || kubectl exec -it "$pod" -c "$cont" -n "$ns" -- sh || { gum style --foreground 160 "❌ Erro de conexão. O Pod está rodando?"; sleep 3; }) ;;
     "📄 Ver .env") view_env ;;
     "🔓 Decodificar Secret") decode_secret ;;
     "⚠️  Radar de Eventos") view_events ;;
@@ -271,6 +296,9 @@ while true; do
     "🚀 Helm Dashboard") helm_dashboard ;;
     "🕵️  Pod de Debug (Netshoot)") debug_pod ;;
     "💀 Caçador de OOMKilled") oom_hunter ;;
+    "💰 Auditor de Recursos") audit_resources ;;
+    "🔐 Testar RBAC (Permissões)") rbac_tester ;;
+    "💾 Gerenciar Storage (PVC)") manage_storage ;;
     "⏪ Rollback") rollback_deploy ;;
     "⏳ Disparar CronJob") trigger_cronjob ;;
     "⚖️  Scale") scale_resource ;;
@@ -284,7 +312,7 @@ while true; do
       [[ -n "$pod" && -n "$local_p" && -n "$pod_p" ]] && (kubectl port-forward pod/"$pod" -n "$ns" "$local_p":"$pod_p" || { gum style --foreground 160 "❌ Erro no túnel. O Pod está rodando?"; sleep 3; }) ;;
     "📊 Métricas")
       if ! kubectl get --raw "/apis/metrics.k8s.io/v1beta1" &>/dev/null; then
-        gum style --foreground 160 "❌ Erro: O 'Metrics Server' não está instalado neste cluster K8s."
+        gum style --foreground 160 "❌ Erro: O 'Metrics Server' não está instalado."
         read -p "Pressione Enter para voltar..."
       else
         kubectl top nodes
