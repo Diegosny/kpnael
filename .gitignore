@@ -1,0 +1,43 @@
+# =========================================================
+# Ignorar ficheiros gerados pelo KPNAEL e DPNAEL
+# =========================================================
+
+# Diretórios de cache e backups (caso teste os scripts localmente)
+backups/
+cache/
+favs/
+.kpnael-dashboard/
+.dpnael-dashboard/
+
+# Exportação de Imagens Docker
+*.tar
+*.tar.gz
+
+# Backups de ConfigMaps e Secrets do Kubernetes
+*.yaml
+*.yml
+!docker-compose.yml
+!docker-compose.yaml
+!compose.yml
+!compose.yaml
+
+# Ficheiros de ambiente e variáveis locais
+.env
+.env.*
+*.secret
+kubeconfig*
+
+# Ficheiros de sistema (macOS / Linux / Windows)
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+Thumbs.db
+ehthumbs.db
+*~
+*.swp
+*.swo
+
+# Logs gerados localmente
+*.log
