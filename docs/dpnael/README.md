@@ -1,5 +1,3 @@
-### Arquivo 2: `README-dpnael.md`
-
 ```markdown
 # 🐳 DPNAEL PRO ULTRA - Docker Dashboard
 

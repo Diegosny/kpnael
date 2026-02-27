@@ -1,6 +1,10 @@
 #!/bin/bash
 
-set -euo pipefail
+# Garante que o terminal volte ao normal (limpa bracketed paste) ao sair
+trap 'printf "\e[?2004l"; clear' EXIT
+
+# Bloqueia o Ctrl+Z (suspensão do processo) para o painel não quebrar
+trap '' SIGTSTP
 
 BASE_DIR="$HOME/.kpnael-dashboard"
 mkdir -p "$BASE_DIR/backups"
@@ -86,14 +90,14 @@ filter_logs() {
   local keyword=$(gum input --placeholder "Filtrar por:")
   [[ -z "$keyword" ]] && return
 
-  kubectl logs "$pod" -c "$cont" -n "$ns" --tail=2000 | grep -i --color=always "$keyword" | gum pager
+  kubectl logs "$pod" -c "$cont" -n "$ns" --tail=2000 | grep -i --color=always "$keyword" | gum pager || { gum style --foreground 160 "❌ Erro ao buscar logs."; sleep 2; }
 }
 
 decode_secret() {
   local sec=$(select_resource "secret" "🔐")
   [[ -z "$sec" ]] && return
   
-  kubectl get secret "$sec" -n "$ns" -o go-template='{{range $k,$v := .data}}{{printf "%s: " $k}}{{if not $v}}{{$v}}{{else}}{{$v | base64decode}}{{end}}{{"\n\n"}}{{end}}' | gum pager
+  kubectl get secret "$sec" -n "$ns" -o go-template='{{range $k,$v := .data}}{{printf "%s: " $k}}{{if not $v}}{{$v}}{{else}}{{$v | base64decode}}{{end}}{{"\n\n"}}{{end}}' | gum pager || { gum style --foreground 160 "❌ Erro ao decodificar."; sleep 2; }
 }
 
 trigger_cronjob() {
@@ -101,7 +105,7 @@ trigger_cronjob() {
   [[ -z "$cj" ]] && return
   
   local job_name="${cj}-manual-$(date +%s)"
-  kubectl create job --from=cronjob/"$cj" "$job_name" -n "$ns" > /dev/null
+  kubectl create job --from=cronjob/"$cj" "$job_name" -n "$ns" > /dev/null || { gum style --foreground 160 "❌ Erro ao disparar Job."; sleep 2; return; }
   
   if gum confirm "Deseja acompanhar os logs deste Job agora?"; then
     sleep 3
@@ -115,7 +119,7 @@ rollback_deploy() {
   [[ -z "$deploy" ]] && return
   
   if gum confirm "Reverter deployment '$deploy'?"; then
-    kubectl rollout undo deploy/"$deploy" -n "$ns"
+    kubectl rollout undo deploy/"$deploy" -n "$ns" || { gum style --foreground 160 "❌ Erro no rollback."; sleep 2; }
     sleep 1
   fi
 }
@@ -136,7 +140,7 @@ scale_resource() {
   [[ -z "$deploy" ]] && return
   local current=$(kubectl get deploy "$deploy" -n "$ns" -o jsonpath='{.spec.replicas}')
   local replicas=$(gum input --placeholder "Novo valor (Atual: $current):")
-  [[ -n "$replicas" ]] && kubectl scale deploy "$deploy" -n "$ns" --replicas="$replicas"
+  [[ -n "$replicas" ]] && kubectl scale deploy "$deploy" -n "$ns" --replicas="$replicas" || { gum style --foreground 160 "❌ Erro ao escalar."; sleep 2; }
 }
 
 set_image() {
@@ -147,11 +151,11 @@ set_image() {
   [[ -z "$container" ]] && return
   
   local new_img=$(gum input --placeholder "Nova imagem:")
-  [[ -n "$new_img" ]] && kubectl set image deploy/"$deploy" "$container"="$new_img" -n "$ns"
+  [[ -n "$new_img" ]] && kubectl set image deploy/"$deploy" "$container"="$new_img" -n "$ns" || { gum style --foreground 160 "❌ Erro ao trocar imagem."; sleep 2; }
 }
 
 view_events() {
-  kubectl get events -n "$ns" --sort-by='.lastTimestamp' | gum pager
+  kubectl get events -n "$ns" --sort-by='.lastTimestamp' | gum pager || { gum style --foreground 160 "❌ Erro ao buscar eventos."; sleep 2; }
 }
 
 live_edit() {
@@ -159,7 +163,7 @@ live_edit() {
   [[ -z "$kind" ]] && return
   local res=$(select_resource "$kind" "📝")
   [[ -z "$res" ]] && return
-  kubectl edit "$kind" "$res" -n "$ns"
+  kubectl edit "$kind" "$res" -n "$ns" || { gum style --foreground 160 "❌ Edição cancelada ou falhou."; sleep 2; }
 }
 
 helm_dashboard() {
@@ -181,7 +185,7 @@ helm_dashboard() {
 
 debug_pod() {
   gum style --foreground 212 "🚀 Iniciando Pod de Debug (netshoot)..."
-  kubectl run "kpnael-debug-$(date +%s)" --rm -i --tty --image=nicolaka/netshoot -n "$ns" -- /bin/bash
+  kubectl run "kpnael-debug-$(date +%s)" --rm -i --tty --image=nicolaka/netshoot -n "$ns" -- /bin/bash || { gum style --foreground 160 "❌ Erro ao iniciar debug."; sleep 2; }
 }
 
 oom_hunter() {
@@ -196,7 +200,7 @@ oom_hunter() {
 }
 
 create_namespace() {
-  local new_ns=$(gum input --placeholder "Nome do novo namespace (ex: meu-projeto):")
+  local new_ns=$(gum input --placeholder "Nome do novo namespace:")
   [[ -z "$new_ns" ]] && return
 
   if kubectl get ns "$new_ns" >/dev/null 2>&1; then
@@ -216,6 +220,8 @@ create_namespace() {
 
 while true; do
   clear
+  printf "\e[?2004l"
+  
   ctx=$(kubectl config current-context)
   gum style --border normal --margin 1 --padding 1 --border-foreground 57 "☸️  KPNAEL | $ctx | $ns"
 
@@ -242,22 +248,22 @@ while true; do
     "➕ Criar Namespace" \
     "💾 Backup" \
     "❌ Sair" \
-    | fzf --prompt="Menu > " --height=90% --reverse --border)
+    | fzf --prompt="Menu > " --height=90% --reverse --border || echo "")
 
   case "$action" in
     "🔎 Logs (Filtrar)") filter_logs ;;
     "📖 Logs (Pager)")
       pod=$(select_resource "pod" "📦")
       [[ -n "$pod" ]] && cont=$(select_container "$pod")
-      [[ -n "$pod" && -n "$cont" ]] && kubectl logs "$pod" -c "$cont" -n "$ns" --tail=300 | gum pager ;;
+      [[ -n "$pod" && -n "$cont" ]] && (kubectl logs "$pod" -c "$cont" -n "$ns" --tail=300 | gum pager || { gum style --foreground 160 "❌ O Pod não está pronto ou falhou."; sleep 3; }) ;;
     "🔴 Logs (Real-time)")
       pod=$(select_resource "pod" "📦")
       [[ -n "$pod" ]] && cont=$(select_container "$pod")
-      [[ -n "$pod" && -n "$cont" ]] && kubectl logs -f "$pod" -c "$cont" -n "$ns" --tail=20 ;;
+      [[ -n "$pod" && -n "$cont" ]] && (kubectl logs -f "$pod" -c "$cont" -n "$ns" --tail=20 || { gum style --foreground 160 "❌ O Pod não está pronto ou falhou."; sleep 3; }) ;;
     "🐚 Shell (Exec)")
       pod=$(select_resource "pod" "📦")
       [[ -n "$pod" ]] && cont=$(select_container "$pod")
-      [[ -n "$pod" && -n "$cont" ]] && (kubectl exec -it "$pod" -c "$cont" -n "$ns" -- bash 2>/dev/null || kubectl exec -it "$pod" -c "$cont" -n "$ns" -- sh) ;;
+      [[ -n "$pod" && -n "$cont" ]] && (kubectl exec -it "$pod" -c "$cont" -n "$ns" -- bash 2>/dev/null || kubectl exec -it "$pod" -c "$cont" -n "$ns" -- sh || { gum style --foreground 160 "❌ Erro de conexão. O Pod está Running?"; sleep 3; }) ;;
     "📄 Ver .env") view_env ;;
     "🔓 Decodificar Secret") decode_secret ;;
     "⚠️  Radar de Eventos") view_events ;;
@@ -275,11 +281,16 @@ while true; do
       [[ -n "$pod" ]] && ports=$(kubectl get pod "$pod" -n "$ns" -o jsonpath='{.spec.containers[*].ports[*].containerPort}')
       [[ -n "$pod" ]] && local_p=$(gum input --placeholder "Porta Local")
       [[ -n "$pod" && -n "$local_p" ]] && pod_p=$(gum input --value "${ports%% *}" --placeholder "Porta no Pod")
-      [[ -n "$pod" && -n "$local_p" && -n "$pod_p" ]] && kubectl port-forward pod/"$pod" -n "$ns" "$local_p":"$pod_p" ;;
+      [[ -n "$pod" && -n "$local_p" && -n "$pod_p" ]] && (kubectl port-forward pod/"$pod" -n "$ns" "$local_p":"$pod_p" || { gum style --foreground 160 "❌ Erro no túnel. O Pod está rodando?"; sleep 3; }) ;;
     "📊 Métricas")
-      kubectl top nodes 2>/dev/null || echo "Metrics Server OFF"
-      kubectl top pods -n "$ns" --sort-by=cpu | head -n 11 2>/dev/null || true
-      read -p "Enter..." ;;
+      if ! kubectl get --raw "/apis/metrics.k8s.io/v1beta1" &>/dev/null; then
+        gum style --foreground 160 "❌ Erro: O 'Metrics Server' não está instalado neste cluster K8s."
+        read -p "Pressione Enter para voltar..."
+      else
+        kubectl top nodes
+        kubectl top pods -n "$ns" --sort-by=cpu | head -n 11 2>/dev/null || true
+        read -p "Enter..."
+      fi ;;
     "🌐 Contexto/Namespace")
       sub=$(printf "Contexto\nNamespace" | fzf)
       [[ "$sub" == "Contexto" ]] && { 
@@ -287,7 +298,10 @@ while true; do
         [[ -n "$ctx" ]] && kubectl config use-context "$ctx" >/dev/null; ns=$(get_current_ns); 
       } || {
         ns_temp=$(kubectl get ns -o name | sed 's|namespace/||' | fzf)
-        [[ -n "$ns_temp" ]] && ns="$ns_temp"
+        if [[ -n "$ns_temp" ]]; then
+          kubectl config set-context --current --namespace="$ns_temp" >/dev/null
+          ns="$ns_temp"
+        fi
       } ;;
     "➕ Criar Namespace") create_namespace ;;
     "💾 Backup")
