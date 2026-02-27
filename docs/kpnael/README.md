@@ -35,12 +35,3 @@ O **kpnael** foi desenhado para resolver dores reais do dia a dia de SREs e Dese
   * **Backup Local:** Salve ConfigMaps e Secrets do namespace atual em `.yaml`.
 
 ---
-
-## 📦 Instalação Automática
-
-O script de instalação detecta seu sistema (Linux/macOS) e instala as dependências necessárias automaticamente (`kubectl`, `gum`, `fzf`, `jq`).
-
-1. Clone o repositório:
-   ```bash
-   git clone git@github.com:Diegosny/kpnael.git
-   cd kpnael

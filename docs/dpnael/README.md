@@ -29,12 +29,3 @@ Diga adeus à lentidão dos apps de interface gráfica pesados. O **dpnael** tra
   * Faxina de sistema (System Prune) para liberar espaço em disco.
 
 ---
-
-## 📦 Instalação Automática
-
-O instalador cuida de preparar todo o ambiente para você, seja no macOS ou Linux.
-
-1. Clone o repositório (junto com a suite kpnael):
-   ```bash
-   git clone git@github.com:Diegosny/kpnael.git
-   cd kpnael
