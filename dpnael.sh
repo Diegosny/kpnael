@@ -107,30 +107,43 @@ scan_image() {
      docker scout cves "$img" | gum pager || { msg_error "Erro no Docker Scout."; sleep 2; }
   else
      gum style --foreground 240 "Docker Scout não detectado. Invocando Trivy (Aqua Security)..."
-     # Usa o Trivy rodando isolado no Docker
      docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image "$img" | gum pager || { msg_error "Falha no scan com Trivy."; sleep 2; }
   fi
 }
 
-extract_run_command() {
+container_to_compose() {
   local target=$(fzf_select "container" "{{.Names}}" "$icon_container")
   [[ -z "$target" ]] && return
   
-  gum style --foreground 212 "🐙 Engenharia reversa no container: $target"
-  gum style --foreground 240 "Extraindo configurações de criação originais..."
+  # Pergunta a pasta de destino (o default é '.' que significa pasta atual)
+  local dest_dir=$(gum input --placeholder "Pasta de destino (Enter para pasta atual):" --value ".")
+  [[ -z "$dest_dir" ]] && dest_dir="."
   
-  # Usa o runlike para gerar o comando original
-  local run_cmd=$(docker run --rm -v /var/run/docker.sock:/var/run/docker.sock assaflavie/runlike "$target" 2>/dev/null)
+  # Cria a pasta caso ela não exista (ignora erros se já existir)
+  mkdir -p "$dest_dir" 2>/dev/null || { msg_error "Sem permissão para criar a pasta $dest_dir."; return; }
   
-  if [[ -n "$run_cmd" ]]; then
-    echo "$run_cmd" > "run-${target}.sh"
-    chmod +x "run-${target}.sh"
-    msg_success "Salvo como script: run-${target}.sh"
-    
-    # Pergunta se o usuário já quer ler o arquivo na hora
-    echo "$run_cmd" | gum pager
+  local file_out="${dest_dir}/docker-compose-${target}.yml"
+  
+  gum style --foreground 212 "🐙 Engenharia reversa (Compose) no container: $target"
+  gum style --foreground 240 "Lendo configurações e salvando em: $file_out"
+  
+  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock red5d/docker-autocompose "$target" > "$file_out" 2> "/tmp/dpnael-compose-error.log" || true
+  
+  if [ -s "$file_out" ]; then
+    # Checagem de segurança: verifica se o script Python não guspiu o erro "Traceback" dentro do YAML
+    if grep -q "Traceback" "$file_out"; then
+      gum style --foreground 160 "❌ Erro ao gerar YAML. O container pode estar usando uma rede incompatível (ex: host)."
+      cat "$file_out" | tail -n 5
+      rm -f "$file_out"
+      sleep 4
+    else
+      msg_success "Salvo com sucesso em: $file_out"
+    fi
   else
-    msg_error "Erro ao extrair as configurações do container."
+    gum style --foreground 160 "❌ Erro ao gerar YAML. O arquivo não pôde ser criado."
+    cat "/tmp/dpnael-compose-error.log" | tail -n 5
+    rm -f "$file_out"
+    sleep 4
   fi
 }
 
@@ -161,7 +174,7 @@ while true; do
     "⚡ Restart/Stop" \
     "🖼️  Backup de Imagem" \
     "🛡️  Escanear Imagem (CVEs)" \
-    "🧬 Engenharia Reversa (Extrair 'docker run')" \
+    "🧬 Reverter Container p/ Compose" \
     "🌐 Mapa de Redes" \
     "🧹 Faxina (Prune)" \
     "❌ Remover Container" \
@@ -188,7 +201,7 @@ while true; do
       fi ;;
     "🖼️  Backup de Imagem") backup_image ;;
     "🛡️  Escanear Imagem (CVEs)") scan_image ;;
-    "🧬 Engenharia Reversa (Extrair 'docker run')") extract_run_command ;;
+    "🧬 Reverter Container p/ Compose") container_to_compose ;;
     "🌐 Mapa de Redes") network_map ;;
     "🧹 Faxina (Prune)")
       if gum confirm "Limpar sistema (containers parados e cache não utilizado)?"; then
