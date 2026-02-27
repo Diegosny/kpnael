@@ -10,7 +10,6 @@ Diga adeus à lentidão dos apps de interface gráfica pesados. O **dpnael** tra
 ## ✨ Demonstração
 
 ![Dashboard do Docker](docs/img/docker-dashboard.png)
-*(Adicione as imagens do seu painel aqui)*
 
 ---
 
