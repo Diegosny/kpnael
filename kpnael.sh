@@ -1,9 +1,6 @@
 #!/bin/bash
 
-# Garante que o terminal volte ao normal (limpa bracketed paste) ao sair
 trap 'printf "\e[?2004l"; clear' EXIT
-
-# Bloqueia o Ctrl+Z (suspensão do processo) para o painel não quebrar
 trap '' SIGTSTP
 
 BASE_DIR="$HOME/.kpnael-dashboard"
@@ -221,6 +218,42 @@ manage_storage() {
   esac
 }
 
+image_xray() {
+  local pod=$(select_resource "pod" "📦")
+  [[ -z "$pod" ]] && return
+  local cont=$(select_container "$pod")
+  [[ -z "$cont" ]] && return
+  
+  local img=$(kubectl get pod "$pod" -n "$ns" -o jsonpath="{.spec.containers[?(@.name=='$cont')].image}")
+  gum style --foreground 212 "🩻 Analisando as camadas da imagem: $img"
+  gum style --foreground 240 "Aviso: Executando o motor localmente via Docker."
+  
+  if command -v docker &>/dev/null; then
+     docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock wagoodman/dive:latest "$img" || { gum style --foreground 160 "❌ Falha ao executar Raio-X. Imagem pode não ser pública."; sleep 3; }
+  else
+     gum style --foreground 160 "❌ Docker não detectado na sua máquina local. O Raio-X precisa dele."
+     sleep 3
+  fi
+}
+
+network_sniffer() {
+  local pod=$(select_resource "pod" "📦")
+  [[ -z "$pod" ]] && return
+  local cont=$(select_container "$pod")
+  [[ -z "$cont" ]] && return
+  
+  local port=$(gum input --placeholder "Porta para escutar (ex: 8080) ou deixe em branco para todas:")
+  local filter=""
+  [[ -n "$port" ]] && filter="port $port"
+  
+  gum style --foreground 212 "🕸️ Injetando Sniffer Efêmero no Pod $pod..."
+  gum style --foreground 240 "Pressione Ctrl+C para parar a captura a qualquer momento."
+  sleep 2
+  
+  # Usa Ephemeral Containers para snifar a rede do container alvo em tempo real
+  kubectl debug -it "$pod" -n "$ns" --target="$cont" --image=nicolaka/netshoot -- tcpdump -i any -A -nn $filter || { gum style --foreground 160 "❌ Falha. Seu cluster pode não ter suporte a Ephemeral Containers."; sleep 3; }
+}
+
 create_namespace() {
   local new_ns=$(gum input --placeholder "Nome do novo namespace:")
   [[ -z "$new_ns" ]] && return
@@ -262,6 +295,8 @@ while true; do
     "💰 Auditor de Recursos" \
     "🔐 Testar RBAC (Permissões)" \
     "💾 Gerenciar Storage (PVC)" \
+    "🩻 Raio-X da Imagem (Dive)" \
+    "🕸️ Sniffer de Rede (Ao Vivo)" \
     "⏪ Rollback" \
     "⏳ Disparar CronJob" \
     "⚖️  Scale" \
@@ -299,6 +334,8 @@ while true; do
     "💰 Auditor de Recursos") audit_resources ;;
     "🔐 Testar RBAC (Permissões)") rbac_tester ;;
     "💾 Gerenciar Storage (PVC)") manage_storage ;;
+    "🩻 Raio-X da Imagem (Dive)") image_xray ;;
+    "🕸️ Sniffer de Rede (Ao Vivo)") network_sniffer ;;
     "⏪ Rollback") rollback_deploy ;;
     "⏳ Disparar CronJob") trigger_cronjob ;;
     "⚖️  Scale") scale_resource ;;

@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Removemos o set -e para que comandos com erro não matem o painel
 trap 'printf "\e[?2004l"; clear' EXIT
 trap '' SIGTSTP
 
@@ -111,37 +110,57 @@ scan_image() {
   fi
 }
 
+image_xray() {
+  local img=$(fzf_select "image" "{{.Repository}}:{{.Tag}}" "$icon_image")
+  [[ -z "$img" ]] && return
+  
+  gum style --foreground 212 "🩻 Preparando motor Raio-X (Dive) para: $img"
+  gum style --foreground 240 "Use as setas para navegar nas camadas e Tab para trocar de painel."
+  sleep 2
+  
+  # Executa o dive passando o socket para ele analisar imagens locais
+  docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock wagoodman/dive:latest "$img" || { msg_error "Falha ao executar o Raio-X."; sleep 2; }
+}
+
+network_sniffer() {
+  local target=$(fzf_select "container" "{{.Names}}" "$icon_container")
+  [[ -z "$target" ]] && return
+  
+  local port=$(gum input --placeholder "Porta para escutar (ex: 80) ou deixe em branco para todas:")
+  local filter=""
+  [[ -n "$port" ]] && filter="port $port"
+  
+  gum style --foreground 212 "🕸️ Injetando Sniffer de Rede (netshoot) em: $target"
+  gum style --foreground 240 "O tcpdump capturará tráfego ao vivo (ASCII). Pressione Ctrl+C para parar."
+  sleep 3
+  
+  # Usa a namespace de rede do container alvo
+  docker run -it --rm --network "container:$target" nicolaka/netshoot tcpdump -i any -A -nn $filter || { msg_error "Falha ao executar o sniffer."; sleep 2; }
+}
+
 container_to_compose() {
   local target=$(fzf_select "container" "{{.Names}}" "$icon_container")
   [[ -z "$target" ]] && return
   
-  # Pergunta a pasta de destino (o default é '.' que significa pasta atual)
   local dest_dir=$(gum input --placeholder "Pasta de destino (Enter para pasta atual):" --value ".")
   [[ -z "$dest_dir" ]] && dest_dir="."
   
-  # Cria a pasta caso ela não exista (ignora erros se já existir)
   mkdir -p "$dest_dir" 2>/dev/null || { msg_error "Sem permissão para criar a pasta $dest_dir."; return; }
-  
   local file_out="${dest_dir}/docker-compose-${target}.yml"
   
   gum style --foreground 212 "🐙 Engenharia reversa (Compose) no container: $target"
-  gum style --foreground 240 "Lendo configurações e salvando em: $file_out"
-  
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock red5d/docker-autocompose "$target" > "$file_out" 2> "/tmp/dpnael-compose-error.log" || true
   
   if [ -s "$file_out" ]; then
-    # Checagem de segurança: verifica se o script Python não guspiu o erro "Traceback" dentro do YAML
     if grep -q "Traceback" "$file_out"; then
-      gum style --foreground 160 "❌ Erro ao gerar YAML. O container pode estar usando uma rede incompatível (ex: host)."
-      cat "$file_out" | tail -n 5
+      gum style --foreground 160 "❌ Erro ao gerar YAML. O container pode estar usando rede incompatível."
       rm -f "$file_out"
       sleep 4
     else
-      msg_success "Salvo com sucesso em: $file_out"
+      msg_success "Salvo em: $file_out"
     fi
   else
-    gum style --foreground 160 "❌ Erro ao gerar YAML. O arquivo não pôde ser criado."
-    cat "/tmp/dpnael-compose-error.log" | tail -n 5
+    gum style --foreground 160 "❌ Erro. O arquivo não pôde ser criado."
     rm -f "$file_out"
     sleep 4
   fi
@@ -174,6 +193,8 @@ while true; do
     "⚡ Restart/Stop" \
     "🖼️  Backup de Imagem" \
     "🛡️  Escanear Imagem (CVEs)" \
+    "🩻 Raio-X de Camadas (Dive)" \
+    "🕸️ Sniffer de Rede (Ao Vivo)" \
     "🧬 Reverter Container p/ Compose" \
     "🌐 Mapa de Redes" \
     "🧹 Faxina (Prune)" \
@@ -201,10 +222,12 @@ while true; do
       fi ;;
     "🖼️  Backup de Imagem") backup_image ;;
     "🛡️  Escanear Imagem (CVEs)") scan_image ;;
+    "🩻 Raio-X de Camadas (Dive)") image_xray ;;
+    "🕸️ Sniffer de Rede (Ao Vivo)") network_sniffer ;;
     "🧬 Reverter Container p/ Compose") container_to_compose ;;
     "🌐 Mapa de Redes") network_map ;;
     "🧹 Faxina (Prune)")
-      if gum confirm "Limpar sistema (containers parados e cache não utilizado)?"; then
+      if gum confirm "Limpar sistema?"; then
         docker system prune -f >/dev/null && msg_success "Limpeza concluída"
       fi ;;
     "❌ Remover Container")
