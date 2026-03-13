@@ -74,7 +74,13 @@ view_env() {
     gum style --foreground 160 "❌ Arquivo .env não encontrado."
     sleep 2
   else
-    echo "$env_data" | gum pager
+    if command -v bat &>/dev/null; then
+      echo "$env_data" | bat -l properties --style=numbers,changes --paging=always
+    elif command -v batcat &>/dev/null; then # Tratativa para Ubuntu/Debian
+      echo "$env_data" | batcat -l properties --style=numbers,changes --paging=always
+    else
+      echo "$env_data" | gum pager
+    fi
   fi
 }
 
@@ -94,7 +100,15 @@ decode_secret() {
   local sec=$(select_resource "secret" "🔐")
   [[ -z "$sec" ]] && return
   
-  kubectl get secret "$sec" -n "$ns" -o go-template='{{range $k,$v := .data}}{{printf "%s: " $k}}{{if not $v}}{{$v}}{{else}}{{$v | base64decode}}{{end}}{{"\n\n"}}{{end}}' | gum pager || { gum style --foreground 160 "❌ Erro ao decodificar."; sleep 2; }
+  local secret_data=$(kubectl get secret "$sec" -n "$ns" -o go-template='{{range $k,$v := .data}}{{printf "%s: " $k}}{{if not $v}}{{$v}}{{else}}{{$v | base64decode}}{{end}}{{"\n\n"}}{{end}}')
+  
+  if command -v bat &>/dev/null; then
+    echo "$secret_data" | bat -l yaml --style=numbers --paging=always
+  elif command -v batcat &>/dev/null; then
+    echo "$secret_data" | batcat -l yaml --style=numbers --paging=always
+  else
+    echo "$secret_data" | gum pager
+  fi
 }
 
 trigger_cronjob() {
@@ -250,7 +264,6 @@ network_sniffer() {
   gum style --foreground 240 "Pressione Ctrl+C para parar a captura a qualquer momento."
   sleep 2
   
-  # Usa Ephemeral Containers para snifar a rede do container alvo em tempo real
   kubectl debug -it "$pod" -n "$ns" --target="$cont" --image=nicolaka/netshoot -- tcpdump -i any -A -nn $filter || { gum style --foreground 160 "❌ Falha. Seu cluster pode não ter suporte a Ephemeral Containers."; sleep 3; }
 }
 
