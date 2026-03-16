@@ -105,7 +105,7 @@ scan_image() {
   if docker scout --help &>/dev/null; then
      docker scout cves "$img" | gum pager || { msg_error "Erro no Docker Scout."; sleep 2; }
   else
-     gum style --foreground 240 "Docker Scout não detectado. Invocando Trivy (Aqua Security)..."
+     gum style --foreground 240 "Docker Scout não detectado. Invocando Trivy..."
      docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image "$img" | gum pager || { msg_error "Falha no scan com Trivy."; sleep 2; }
   fi
 }
@@ -115,7 +115,6 @@ image_xray() {
   [[ -z "$img" ]] && return
   
   gum style --foreground 212 "🩻 Preparando motor Raio-X (Dive) para: $img"
-  gum style --foreground 240 "Use as setas para navegar nas camadas e Tab para trocar de painel."
   sleep 2
   
   docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock wagoodman/dive:latest "$img" || { msg_error "Falha ao executar o Raio-X."; sleep 2; }
@@ -130,7 +129,6 @@ network_sniffer() {
   [[ -n "$port" ]] && filter="port $port"
   
   gum style --foreground 212 "🕸️ Injetando Sniffer de Rede (netshoot) em: $target"
-  gum style --foreground 240 "O tcpdump capturará tráfego ao vivo (ASCII). Pressione Ctrl+C para parar."
   sleep 3
   
   docker run -it --rm --network "container:$target" nicolaka/netshoot tcpdump -i any -A -nn $filter || { msg_error "Falha ao executar o sniffer."; sleep 2; }
@@ -143,7 +141,7 @@ container_to_compose() {
   local dest_dir=$(gum input --placeholder "Pasta de destino (Enter para pasta atual):" --value ".")
   [[ -z "$dest_dir" ]] && dest_dir="."
   
-  mkdir -p "$dest_dir" 2>/dev/null || { msg_error "Sem permissão para criar a pasta $dest_dir."; return; }
+  mkdir -p "$dest_dir" 2>/dev/null || { msg_error "Sem permissão p/ criar a pasta."; return; }
   local file_out="${dest_dir}/docker-compose-${target}.yml"
   
   gum style --foreground 212 "🐙 Engenharia reversa (Compose) no container: $target"
@@ -177,19 +175,92 @@ laravel_tinker() {
   [[ -z "$target" ]] && return
   
   gum style --foreground 212 "🐘 Editor Laravel Tinker (Multi-linha)"
-  gum style --foreground 240 "Cole ou digite seu código PHP abaixo. Pressione [Ctrl+D] para salvar e enviar para o container."
-  
-  local code=$(gum write --placeholder "Ex: \$users = User::where('active', 1)->get();")
+  local code=$(gum write --placeholder "Cole seu código PHP. Pressione [Ctrl+D] para enviar.")
   [[ -z "$code" ]] && return
   
   gum style --foreground 212 "⏳ Executando código no Tinker..."
-  
   local result=$(echo "$code" | docker exec -i "$target" php artisan tinker 2>&1 | sed -e '/^Psy Shell v/d' -e '/^> /d' -e '/^\. /d' -e '/^>$/d' -e '/^Exit:  Ctrl+D/d')
   
   if command -v bat &>/dev/null; then
     echo "$result" | bat -l php --style=plain --paging=always
   elif command -v batcat &>/dev/null; then
     echo "$result" | batcat -l php --style=plain --paging=always
+  else
+    echo "$result" | gum pager
+  fi
+}
+
+database_explorer() {
+  local target=$(fzf_select "container" "{{.Names}}" "$icon_container")
+  [[ -z "$target" ]] && return
+
+  local db_type=$(gum choose "🐘 PostgreSQL" "🐬 MySQL/MariaDB" "❌ Cancelar")
+  [[ "$db_type" == "❌ Cancelar" || -z "$db_type" ]] && return
+
+  gum style --foreground 212 "🔑 Credenciais do Banco de Dados"
+  local user=$(gum input --placeholder "Usuário (ex: postgres, root):")
+  local pass=$(gum input --password --placeholder "Senha:")
+  local db=$(gum input --placeholder "Nome do Banco de Dados:")
+
+  [[ -z "$user" || -z "$db" ]] && { msg_error "Usuário e Banco são obrigatórios."; return; }
+
+  local action=$(gum choose "📊 Listar Tabelas" "🔎 Ver Estrutura da Tabela" "💾 Exportar Dump (.sql)")
+  [[ -z "$action" ]] && return
+
+  gum style --foreground 212 "⏳ Conectando ao banco de dados no container $target..."
+
+  if [[ "$action" == "💾 Exportar Dump (.sql)" ]]; then
+    local ts=$(date +%s)
+    local dest_dir=$(gum input --placeholder "Pasta destino (Enter para atual):" --value ".")
+    [[ -z "$dest_dir" ]] && dest_dir="."
+    mkdir -p "$dest_dir" 2>/dev/null || { msg_error "Sem permissão p/ criar pasta."; return; }
+    
+    local file_out="${dest_dir}/dump-${target}-${db}-${ts}.sql"
+
+    if [[ "$db_type" == *"PostgreSQL"* ]]; then
+      docker exec -i "$target" sh -c "PGPASSWORD='$pass' pg_dump -U '$user' -d '$db'" > "$file_out" 2>/dev/null
+    else
+      docker exec -i "$target" sh -c "mysqldump -u'$user' -p'$pass' '$db'" > "$file_out" 2>/dev/null
+    fi
+
+    if [ -s "$file_out" ]; then
+      msg_success "Dump salvo em: $file_out"
+    else
+      msg_error "Erro ao gerar o Dump. Verifique as credenciais."
+      rm -f "$file_out"
+    fi
+    return
+  fi
+
+  local query_cmd=""
+  local table=""
+
+  if [[ "$action" == "🔎 Ver Estrutura da Tabela" ]]; then
+    table=$(gum input --placeholder "Digite o nome da tabela:")
+    [[ -z "$table" ]] && return
+  fi
+
+  if [[ "$db_type" == *"PostgreSQL"* ]]; then
+    if [[ "$action" == "📊 Listar Tabelas" ]]; then
+      query_cmd="PGPASSWORD='$pass' psql -U '$user' -d '$db' -c '\dt'"
+    else
+      query_cmd="PGPASSWORD='$pass' psql -U '$user' -d '$db' -c '\d $table'"
+    fi
+  else
+    if [[ "$action" == "📊 Listar Tabelas" ]]; then
+      query_cmd="mysql -u'$user' -p'$pass' -D '$db' -e 'SHOW TABLES;'"
+    else
+      query_cmd="mysql -u'$user' -p'$pass' -D '$db' -e 'DESCRIBE $table;'"
+    fi
+  fi
+
+  # Executa a query e limpa o warning chato do MySQL
+  local result=$(docker exec -i "$target" sh -c "$query_cmd" 2>&1 | grep -v "Using a password on the command line interface can be insecure.")
+
+  if command -v bat &>/dev/null; then
+    echo "$result" | bat -l sql --style=plain --paging=always
+  elif command -v batcat &>/dev/null; then
+    echo "$result" | batcat -l sql --style=plain --paging=always
   else
     echo "$result" | gum pager
   fi
@@ -208,6 +279,7 @@ while true; do
     "🔍 Logs" \
     "🐚 Shell" \
     "🐘 Laravel Tinker (Multi-linha)" \
+    "🗄️ Explorador de Banco de Dados" \
     "🐙 Compose Local" \
     "🔗 Criar Domínio (/etc/hosts)" \
     "🗑️  Remover Domínio" \
@@ -232,6 +304,7 @@ while true; do
       target=$(fzf_select "container" "{{.Names}}" "$icon_container")
       [[ -n "$target" ]] && (docker exec -it "$target" bash 2>/dev/null || docker exec -it "$target" sh || { msg_error "Erro ao entrar no container."; }) ;;
     "🐘 Laravel Tinker (Multi-linha)") laravel_tinker ;;
+    "🗄️ Explorador de Banco de Dados") database_explorer ;;
     "🐙 Compose Local") manage_compose ;;
     "🔗 Criar Domínio (/etc/hosts)") set_local_domain ;;
     "🗑️  Remover Domínio") remove_local_domain ;;
