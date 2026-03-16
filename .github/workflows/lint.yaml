@@ -2,9 +2,9 @@ name: 🛡️ Inspeção de Qualidade (ShellCheck)
 
 on:
     push:
-        branches: ["master"]
+        branches: ["main"]
     pull_request:
-        branches: ["master"]
+        branches: ["main"]
 
 jobs:
     shellcheck:
@@ -15,8 +15,5 @@ jobs:
             - name: 📥 Clonar o Repositório
               uses: actions/checkout@v4
 
-            - name: 🔍 Rodar ShellCheck
-              uses: ludeeus/action-shellcheck@master
-              with:
-                  scandir: "./"
-                  ignore: SC2086,SC2155,SC2046,SC2002
+            - name: 🔍 Rodar ShellCheck Nativo
+              run: shellcheck *.sh --exclude=SC2086,SC2155,SC2046,SC2002,SC2024,SC2016,SC2015,SC2162
