@@ -111,13 +111,212 @@ decode_secret() {
   fi
 }
 
+hpa_radar() {
+  local acao=$(gum choose "📊 Status Real-Time (Alvos e Réplicas)" "📜 Cronômetro de Eventos (Logs)" "⚠️  Scanner de Prontidão (Requests)" "🔥 Forçar Carga (Stress Test CPU)" "❌ Voltar")
+  [[ -z "$acao" || "$acao" == "❌ Voltar" ]] && return
+
+  case "$acao" in
+    "📊 Status Real-Time (Alvos e Réplicas)")
+      gum style --foreground 212 "📈 Status dos HPAs no namespace: $ns"
+      local hpa_data=$(kubectl get hpa -n "$ns" 2>/dev/null)
+      if [[ -z "$hpa_data" || "$hpa_data" == *"No resources found"* ]]; then
+         gum style --foreground 160 "❌ Nenhum HPA configurado neste namespace."
+         sleep 2; return
+      fi
+      if command -v bat &>/dev/null; then
+        echo "$hpa_data" | bat -l bash --style=plain --paging=always
+      elif command -v batcat &>/dev/null; then
+        echo "$hpa_data" | batcat -l bash --style=plain --paging=always
+      else
+        echo "$hpa_data" | gum pager
+      fi
+      ;;
+    "📜 Cronômetro de Eventos (Logs)")
+      local hpa=$(kubectl get hpa -n "$ns" --no-headers 2>/dev/null | awk '{print $1}' | fzf --prompt="Selecione o HPA > ")
+      [[ -z "$hpa" ]] && return
+      gum style --foreground 212 "⏱️ Eventos de Escalabilidade para: $hpa"
+      local events=$(kubectl describe hpa "$hpa" -n "$ns" | grep -A 50 "Events:")
+      if command -v bat &>/dev/null; then
+        echo "$events" | bat -l yaml --style=plain --paging=always
+      elif command -v batcat &>/dev/null; then
+        echo "$events" | batcat -l yaml --style=plain --paging=always
+      else
+        echo "$events" | gum pager
+      fi
+      ;;
+    "⚠️  Scanner de Prontidão (Requests)")
+      gum style --foreground 212 "⚠️  Verificando se os Pods têm 'Requests' de CPU definidos (Obrigatório para o HPA funcionar)..."
+      local audit=$(kubectl get pods -n "$ns" -o custom-columns="POD:.metadata.name,CPU-REQ:.spec.containers[*].resources.requests.cpu,MEM-REQ:.spec.containers[*].resources.requests.memory" | awk '{if (NR>1) { if ($2=="<none>" || $3=="<none>") print "❌ CEGO: " $0; else print "✅ PRONTO: " $0 } else print $0}')
+      if command -v bat &>/dev/null; then
+        echo "$audit" | bat -l bash --style=plain --paging=always
+      elif command -v batcat &>/dev/null; then
+        echo "$audit" | batcat -l bash --style=plain --paging=always
+      else
+        echo "$audit" | gum pager
+      fi
+      ;;
+    "🔥 Forçar Carga (Stress Test CPU)")
+      local pod=$(select_resource "pod" "📦")
+      [[ -z "$pod" ]] && return
+      local cont=$(select_container "$pod")
+      [[ -z "$cont" ]] && return
+      
+      gum style --foreground 160 "🔥 ATENÇÃO: Isso vai forçar 100% de uso de CPU em um core do container por 60s!"
+      gum style --foreground 240 "Ideal para testar se a regra do HPA (ex: >70%) vai engatilhar."
+      
+      if gum confirm "Deseja iniciar o incêndio controlado?"; then
+        gum style --foreground 212 "⏳ Queimando CPU... Monitore o status do HPA em outra aba."
+        # Roda um loop infinito silencioso em background para esgotar a CPU
+        kubectl exec "$pod" -c "$cont" -n "$ns" -- sh -c 'end=$((SECONDS+60)); while [ $SECONDS -lt $end ]; do i=$((i+1)); done' &
+        gum spin --title "Processando carga (60s)..." -- sleep 60
+        gum style --foreground 46 "✅ Carga finalizada! Verifique o Log de Eventos para medir o tempo do Scale-Up."
+        sleep 4
+      fi
+      ;;
+  esac
+}
+
+laravel_tinker() {
+  local pod=$(select_resource "pod" "📦")
+  [[ -z "$pod" ]] && return
+  local cont=$(select_container "$pod")
+  [[ -z "$cont" ]] && return
+  
+  gum style --foreground 212 "🐘 Editor Laravel Tinker (Multi-linha)"
+  local code=$(gum write --placeholder "Cole seu código PHP. Pressione [Ctrl+D] para enviar ao pod.")
+  [[ -z "$code" ]] && return
+  
+  gum style --foreground 212 "⏳ Executando código no Tinker..."
+  local result=$(echo "$code" | kubectl exec -i "$pod" -c "$cont" -n "$ns" -- php artisan tinker 2>&1 | sed -e '/^Psy Shell v/d' -e '/^> /d' -e '/^\. /d' -e '/^>$/d' -e '/^Exit:  Ctrl+D/d')
+  
+  if command -v bat &>/dev/null; then
+    echo "$result" | bat -l php --style=plain --paging=always
+  elif command -v batcat &>/dev/null; then
+    echo "$result" | batcat -l php --style=plain --paging=always
+  else
+    echo "$result" | gum pager
+  fi
+}
+
+database_explorer() {
+  local pod=$(select_resource "pod" "📦")
+  [[ -z "$pod" ]] && return
+  local cont=$(select_container "$pod")
+  [[ -z "$cont" ]] && return
+
+  local db_type=$(gum choose "🐘 PostgreSQL" "🐬 MySQL/MariaDB" "❌ Cancelar")
+  [[ "$db_type" == "❌ Cancelar" || -z "$db_type" ]] && return
+
+  gum style --foreground 212 "🔑 Credenciais do Banco de Dados"
+  local user=$(gum input --placeholder "Usuário (ex: postgres, root):")
+  local pass=$(gum input --password --placeholder "Senha:")
+  local db=$(gum input --placeholder "Nome do Banco de Dados:")
+
+  [[ -z "$user" || -z "$db" ]] && { gum style --foreground 160 "❌ Usuário e Banco são obrigatórios."; sleep 2; return; }
+
+  local action=$(gum choose "📊 Listar Tabelas" "🔎 Ver Estrutura da Tabela" "💾 Exportar Dump (.sql)")
+  [[ -z "$action" ]] && return
+
+  gum style --foreground 212 "⏳ Conectando ao banco de dados no pod $pod..."
+
+  if [[ "$action" == "💾 Exportar Dump (.sql)" ]]; then
+    local ts=$(date +%s)
+    local dest_dir=$(gum input --placeholder "Pasta destino (Enter para atual):" --value ".")
+    [[ -z "$dest_dir" ]] && dest_dir="."
+    mkdir -p "$dest_dir" 2>/dev/null || { gum style --foreground 160 "❌ Sem permissão p/ criar pasta."; sleep 2; return; }
+    
+    local file_out="${dest_dir}/dump-${pod}-${db}-${ts}.sql"
+    gum style --foreground 240 "Baixando dados... Isso pode demorar dependendo do tamanho."
+
+    if [[ "$db_type" == *"PostgreSQL"* ]]; then
+      kubectl exec "$pod" -c "$cont" -n "$ns" -- sh -c "PGPASSWORD='$pass' pg_dump -U '$user' -d '$db'" > "$file_out" 2>/dev/null
+    else
+      kubectl exec "$pod" -c "$cont" -n "$ns" -- sh -c "mysqldump -u'$user' -p'$pass' '$db'" > "$file_out" 2>/dev/null
+    fi
+
+    if [ -s "$file_out" ]; then
+      gum style --foreground 46 "✅ Dump salvo com sucesso em: $file_out"
+    else
+      gum style --foreground 160 "❌ Erro ao gerar o Dump. Verifique as credenciais."
+      rm -f "$file_out"
+    fi
+    sleep 3
+    return
+  fi
+
+  local query_cmd=""
+  local table=""
+
+  if [[ "$action" == "🔎 Ver Estrutura da Tabela" ]]; then
+    table=$(gum input --placeholder "Digite o nome da tabela:")
+    [[ -z "$table" ]] && return
+  fi
+
+  if [[ "$db_type" == *"PostgreSQL"* ]]; then
+    if [[ "$action" == "📊 Listar Tabelas" ]]; then
+      query_cmd="PGPASSWORD='$pass' psql -U '$user' -d '$db' -c '\dt'"
+    else
+      query_cmd="PGPASSWORD='$pass' psql -U '$user' -d '$db' -c '\d $table'"
+    fi
+  else
+    if [[ "$action" == "📊 Listar Tabelas" ]]; then
+      query_cmd="mysql -u'$user' -p'$pass' -D '$db' -e 'SHOW TABLES;'"
+    else
+      query_cmd="mysql -u'$user' -p'$pass' -D '$db' -e 'DESCRIBE $table;'"
+    fi
+  fi
+
+  local result=$(kubectl exec -i "$pod" -c "$cont" -n "$ns" -- sh -c "$query_cmd" 2>&1 | grep -v "Using a password on the command line interface can be insecure.")
+
+  if command -v bat &>/dev/null; then
+    echo "$result" | bat -l sql --style=plain --paging=always
+  elif command -v batcat &>/dev/null; then
+    echo "$result" | batcat -l sql --style=plain --paging=always
+  else
+    echo "$result" | gum pager
+  fi
+}
+
+image_xray() {
+  local pod=$(select_resource "pod" "📦")
+  [[ -z "$pod" ]] && return
+  local cont=$(select_container "$pod")
+  [[ -z "$cont" ]] && return
+  
+  local img=$(kubectl get pod "$pod" -n "$ns" -o jsonpath="{.spec.containers[?(@.name=='$cont')].image}")
+  gum style --foreground 212 "🩻 Analisando as camadas da imagem: $img"
+  gum style --foreground 240 "Aviso: Executando o motor localmente via Docker."
+  
+  if command -v docker &>/dev/null; then
+     docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock wagoodman/dive:latest "$img" || { gum style --foreground 160 "❌ Falha ao executar Raio-X. Imagem pode não ser pública."; sleep 3; }
+  else
+     gum style --foreground 160 "❌ Docker não detectado na sua máquina local."
+     sleep 3
+  fi
+}
+
+network_sniffer() {
+  local pod=$(select_resource "pod" "📦")
+  [[ -z "$pod" ]] && return
+  local cont=$(select_container "$pod")
+  [[ -z "$cont" ]] && return
+  
+  local port=$(gum input --placeholder "Porta para escutar (ex: 8080) ou deixe em branco para todas:")
+  local filter=""
+  [[ -n "$port" ]] && filter="port $port"
+  
+  gum style --foreground 212 "🕸️ Injetando Sniffer Efêmero no Pod $pod..."
+  gum style --foreground 240 "Pressione Ctrl+C para parar a captura a qualquer momento."
+  sleep 2
+  
+  kubectl debug -it "$pod" -n "$ns" --target="$cont" --image=nicolaka/netshoot -- tcpdump -i any -A -nn $filter || { gum style --foreground 160 "❌ Falha. Seu cluster pode não ter suporte a Ephemeral Containers."; sleep 3; }
+}
+
 trigger_cronjob() {
   local cj=$(select_resource "cj" "⏳")
   [[ -z "$cj" ]] && return
-  
   local job_name="${cj}-manual-$(date +%s)"
   kubectl create job --from=cronjob/"$cj" "$job_name" -n "$ns" > /dev/null || { gum style --foreground 160 "❌ Erro ao disparar Job."; sleep 2; return; }
-  
   if gum confirm "Deseja acompanhar os logs deste Job agora?"; then
     sleep 3
     local pod_name=$(kubectl get pods -n "$ns" -l job-name="$job_name" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
@@ -128,7 +327,6 @@ trigger_cronjob() {
 rollback_deploy() {
   local deploy=$(select_resource "deploy" "🚀")
   [[ -z "$deploy" ]] && return
-  
   if gum confirm "Reverter deployment '$deploy'?"; then
     kubectl rollout undo deploy/"$deploy" -n "$ns" || { gum style --foreground 160 "❌ Erro no rollback."; sleep 2; }
     sleep 1
@@ -160,7 +358,6 @@ set_image() {
   local containers=$(kubectl get deploy "$deploy" -n "$ns" -o jsonpath='{.spec.template.spec.containers[*].name}')
   local container=$(echo "$containers" | tr ' ' '\n' | fzf --prompt="Container > " --height=40% || echo "")
   [[ -z "$container" ]] && return
-  
   local new_img=$(gum input --placeholder "Nova imagem:")
   [[ -n "$new_img" ]] && kubectl set image deploy/"$deploy" "$container"="$new_img" -n "$ns" || { gum style --foreground 160 "❌ Erro ao trocar imagem."; sleep 2; }
 }
@@ -210,11 +407,6 @@ oom_hunter() {
   fi
 }
 
-audit_resources() {
-  gum style --foreground 212 "📊 Auditoria: Limites e Requisições (Namespace: $ns)..."
-  kubectl get pods -n "$ns" -o custom-columns="POD:.metadata.name,CPU-REQ:.spec.containers[*].resources.requests.cpu,CPU-LIM:.spec.containers[*].resources.limits.cpu,MEM-REQ:.spec.containers[*].resources.requests.memory,MEM-LIM:.spec.containers[*].resources.limits.memory" | gum pager || { gum style --foreground 160 "❌ Erro ao auditar recursos."; sleep 2; }
-}
-
 rbac_tester() {
   local sa=$(kubectl get sa -n "$ns" --no-headers 2>/dev/null | awk '{print $1}' | fzf --prompt="ServiceAccount > " || echo "")
   [[ -z "$sa" ]] && return
@@ -232,70 +424,9 @@ manage_storage() {
   esac
 }
 
-image_xray() {
-  local pod=$(select_resource "pod" "📦")
-  [[ -z "$pod" ]] && return
-  local cont=$(select_container "$pod")
-  [[ -z "$cont" ]] && return
-  
-  local img=$(kubectl get pod "$pod" -n "$ns" -o jsonpath="{.spec.containers[?(@.name=='$cont')].image}")
-  gum style --foreground 212 "🩻 Analisando as camadas da imagem: $img"
-  gum style --foreground 240 "Aviso: Executando o motor localmente via Docker."
-  
-  if command -v docker &>/dev/null; then
-     docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock wagoodman/dive:latest "$img" || { gum style --foreground 160 "❌ Falha ao executar Raio-X. Imagem pode não ser pública."; sleep 3; }
-  else
-     gum style --foreground 160 "❌ Docker não detectado na sua máquina local. O Raio-X precisa dele."
-     sleep 3
-  fi
-}
-
-network_sniffer() {
-  local pod=$(select_resource "pod" "📦")
-  [[ -z "$pod" ]] && return
-  local cont=$(select_container "$pod")
-  [[ -z "$cont" ]] && return
-  
-  local port=$(gum input --placeholder "Porta para escutar (ex: 8080) ou deixe em branco para todas:")
-  local filter=""
-  [[ -n "$port" ]] && filter="port $port"
-  
-  gum style --foreground 212 "🕸️ Injetando Sniffer Efêmero no Pod $pod..."
-  gum style --foreground 240 "Pressione Ctrl+C para parar a captura a qualquer momento."
-  sleep 2
-  
-  kubectl debug -it "$pod" -n "$ns" --target="$cont" --image=nicolaka/netshoot -- tcpdump -i any -A -nn $filter || { gum style --foreground 160 "❌ Falha. Seu cluster pode não ter suporte a Ephemeral Containers."; sleep 3; }
-}
-
-laravel_tinker() {
-  local pod=$(select_resource "pod" "📦")
-  [[ -z "$pod" ]] && return
-  local cont=$(select_container "$pod")
-  [[ -z "$cont" ]] && return
-  
-  gum style --foreground 212 "🐘 Editor Laravel Tinker (Multi-linha)"
-  gum style --foreground 240 "Cole ou digite seu código PHP abaixo. Pressione [Ctrl+D] para salvar e enviar para o pod."
-  
-  local code=$(gum write --placeholder "Ex: \$users = User::where('active', 1)->get();")
-  [[ -z "$code" ]] && return
-  
-  gum style --foreground 212 "⏳ Executando código no Tinker..."
-  
-  local result=$(echo "$code" | kubectl exec -i "$pod" -c "$cont" -n "$ns" -- php artisan tinker 2>&1 | sed -e '/^Psy Shell v/d' -e '/^> /d' -e '/^\. /d' -e '/^>$/d' -e '/^Exit:  Ctrl+D/d')
-  
-  if command -v bat &>/dev/null; then
-    echo "$result" | bat -l php --style=plain --paging=always
-  elif command -v batcat &>/dev/null; then
-    echo "$result" | batcat -l php --style=plain --paging=always
-  else
-    echo "$result" | gum pager
-  fi
-}
-
 create_namespace() {
   local new_ns=$(gum input --placeholder "Nome do novo namespace:")
   [[ -z "$new_ns" ]] && return
-
   if kubectl get ns "$new_ns" >/dev/null 2>&1; then
     gum style --foreground 160 "❌ O namespace '$new_ns' já existe."
     sleep 2
@@ -303,7 +434,6 @@ create_namespace() {
     gum style --foreground 212 "⏳ Criando namespace '$new_ns'..."
     kubectl create namespace "$new_ns" >/dev/null
     gum style --foreground 46 "✅ Namespace criado com sucesso!"
-    
     if gum confirm "Deseja mudar para este namespace agora?"; then
       kubectl config set-context --current --namespace="$new_ns" >/dev/null
       ns="$new_ns"
@@ -324,14 +454,15 @@ while true; do
     "🔴 Logs (Real-time)" \
     "🐚 Shell (Exec)" \
     "📄 Ver .env" \
+    "📈 Radar de Auto-Scaling (HPA)" \
     "🐘 Laravel Tinker (Multi-linha)" \
+    "🗄️ Explorador de Banco de Dados" \
     "🔓 Decodificar Secret" \
     "⚠️  Radar de Eventos" \
     "✏️  Editor (ConfigMap/Secret)" \
     "🚀 Helm Dashboard" \
     "🕵️  Pod de Debug (Netshoot)" \
     "💀 Caçador de OOMKilled" \
-    "💰 Auditor de Recursos" \
     "🔐 Testar RBAC (Permissões)" \
     "💾 Gerenciar Storage (PVC)" \
     "🩻 Raio-X da Imagem (Dive)" \
@@ -364,14 +495,15 @@ while true; do
       [[ -n "$pod" ]] && cont=$(select_container "$pod")
       [[ -n "$pod" && -n "$cont" ]] && (kubectl exec -it "$pod" -c "$cont" -n "$ns" -- bash 2>/dev/null || kubectl exec -it "$pod" -c "$cont" -n "$ns" -- sh || { gum style --foreground 160 "❌ Erro de conexão. O Pod está rodando?"; sleep 3; }) ;;
     "📄 Ver .env") view_env ;;
+    "📈 Radar de Auto-Scaling (HPA)") hpa_radar ;;
     "🐘 Laravel Tinker (Multi-linha)") laravel_tinker ;;
+    "🗄️ Explorador de Banco de Dados") database_explorer ;;
     "🔓 Decodificar Secret") decode_secret ;;
     "⚠️  Radar de Eventos") view_events ;;
     "✏️  Editor (ConfigMap/Secret)") live_edit ;;
     "🚀 Helm Dashboard") helm_dashboard ;;
     "🕵️  Pod de Debug (Netshoot)") debug_pod ;;
     "💀 Caçador de OOMKilled") oom_hunter ;;
-    "💰 Auditor de Recursos") audit_resources ;;
     "🔐 Testar RBAC (Permissões)") rbac_tester ;;
     "💾 Gerenciar Storage (PVC)") manage_storage ;;
     "🩻 Raio-X da Imagem (Dive)") image_xray ;;
