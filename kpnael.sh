@@ -281,8 +281,7 @@ laravel_tinker() {
   
   gum style --foreground 212 "⏳ Executando código no Tinker..."
   
-  # Injeta o código usando stdin (-i) diretamente no processo do tinker dentro do pod
-  local result=$(echo "$code" | kubectl exec -i "$pod" -c "$cont" -n "$ns" -- php artisan tinker 2>&1)
+  local result=$(echo "$code" | kubectl exec -i "$pod" -c "$cont" -n "$ns" -- php artisan tinker 2>&1 | sed -e '/^Psy Shell v/d' -e '/^> /d' -e '/^\. /d' -e '/^>$/d' -e '/^Exit:  Ctrl+D/d')
   
   if command -v bat &>/dev/null; then
     echo "$result" | bat -l php --style=plain --paging=always

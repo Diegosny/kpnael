@@ -118,7 +118,6 @@ image_xray() {
   gum style --foreground 240 "Use as setas para navegar nas camadas e Tab para trocar de painel."
   sleep 2
   
-  # Executa o dive passando o socket para ele analisar imagens locais
   docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock wagoodman/dive:latest "$img" || { msg_error "Falha ao executar o Raio-X."; sleep 2; }
 }
 
@@ -134,7 +133,6 @@ network_sniffer() {
   gum style --foreground 240 "O tcpdump capturará tráfego ao vivo (ASCII). Pressione Ctrl+C para parar."
   sleep 3
   
-  # Usa a namespace de rede do container alvo
   docker run -it --rm --network "container:$target" nicolaka/netshoot tcpdump -i any -A -nn $filter || { msg_error "Falha ao executar o sniffer."; sleep 2; }
 }
 
@@ -174,6 +172,29 @@ network_map() {
   docker network inspect "$net" --format '{{range .Containers}} - {{.Name}} (IP: {{.IPv4Address}}){{println}}{{else}}Nenhum container ativo nesta rede.{{end}}' | gum pager || { msg_error "Erro ao inspecionar a rede."; }
 }
 
+laravel_tinker() {
+  local target=$(fzf_select "container" "{{.Names}}" "$icon_container")
+  [[ -z "$target" ]] && return
+  
+  gum style --foreground 212 "🐘 Editor Laravel Tinker (Multi-linha)"
+  gum style --foreground 240 "Cole ou digite seu código PHP abaixo. Pressione [Ctrl+D] para salvar e enviar para o container."
+  
+  local code=$(gum write --placeholder "Ex: \$users = User::where('active', 1)->get();")
+  [[ -z "$code" ]] && return
+  
+  gum style --foreground 212 "⏳ Executando código no Tinker..."
+  
+  local result=$(echo "$code" | docker exec -i "$target" php artisan tinker 2>&1 | sed -e '/^Psy Shell v/d' -e '/^> /d' -e '/^\. /d' -e '/^>$/d' -e '/^Exit:  Ctrl+D/d')
+  
+  if command -v bat &>/dev/null; then
+    echo "$result" | bat -l php --style=plain --paging=always
+  elif command -v batcat &>/dev/null; then
+    echo "$result" | batcat -l php --style=plain --paging=always
+  else
+    echo "$result" | gum pager
+  fi
+}
+
 while true; do
   clear
   printf "\e[?2004l"
@@ -186,6 +207,7 @@ while true; do
   action=$(printf "%s\n" \
     "🔍 Logs" \
     "🐚 Shell" \
+    "🐘 Laravel Tinker (Multi-linha)" \
     "🐙 Compose Local" \
     "🔗 Criar Domínio (/etc/hosts)" \
     "🗑️  Remover Domínio" \
@@ -209,6 +231,7 @@ while true; do
     "🐚 Shell")
       target=$(fzf_select "container" "{{.Names}}" "$icon_container")
       [[ -n "$target" ]] && (docker exec -it "$target" bash 2>/dev/null || docker exec -it "$target" sh || { msg_error "Erro ao entrar no container."; }) ;;
+    "🐘 Laravel Tinker (Multi-linha)") laravel_tinker ;;
     "🐙 Compose Local") manage_compose ;;
     "🔗 Criar Domínio (/etc/hosts)") set_local_domain ;;
     "🗑️  Remover Domínio") remove_local_domain ;;
