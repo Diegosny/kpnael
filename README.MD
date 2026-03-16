@@ -13,7 +13,7 @@ Pare de digitar comandos gigantes e foque no que importa.
 * **`kpnael` (Kubernetes):** O seu canivete suíço para gerenciar clusters, pods, secrets, RBAC, e realizar troubleshooting avançado em tempo real.
 * **`dpnael` (Docker):** Um dashboard ágil para administrar containers locais, reverter arquiteturas e analisar redes sem consumir a memória da sua máquina.
 
-## ✨ Features Nível Sênior (Day-2 Operations)
+## ✨ Melhores Features
 
 - 🐙 **Engenharia Reversa (Autocompose):** Selecione um container Docker em execução e gere o arquivo `docker-compose.yml` original instantaneamente.
 - 🐘 **Laravel Tinker Interativo:** Injeção de código PHP multilinha direto nos containers de produção via `stdin`.
