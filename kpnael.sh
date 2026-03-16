@@ -76,7 +76,7 @@ view_env() {
   else
     if command -v bat &>/dev/null; then
       echo "$env_data" | bat -l properties --style=numbers,changes --paging=always
-    elif command -v batcat &>/dev/null; then # Tratativa para Ubuntu/Debian
+    elif command -v batcat &>/dev/null; then 
       echo "$env_data" | batcat -l properties --style=numbers,changes --paging=always
     else
       echo "$env_data" | gum pager
@@ -267,6 +267,32 @@ network_sniffer() {
   kubectl debug -it "$pod" -n "$ns" --target="$cont" --image=nicolaka/netshoot -- tcpdump -i any -A -nn $filter || { gum style --foreground 160 "❌ Falha. Seu cluster pode não ter suporte a Ephemeral Containers."; sleep 3; }
 }
 
+laravel_tinker() {
+  local pod=$(select_resource "pod" "📦")
+  [[ -z "$pod" ]] && return
+  local cont=$(select_container "$pod")
+  [[ -z "$cont" ]] && return
+  
+  gum style --foreground 212 "🐘 Editor Laravel Tinker (Multi-linha)"
+  gum style --foreground 240 "Cole ou digite seu código PHP abaixo. Pressione [Ctrl+D] para salvar e enviar para o pod."
+  
+  local code=$(gum write --placeholder "Ex: \$users = User::where('active', 1)->get();")
+  [[ -z "$code" ]] && return
+  
+  gum style --foreground 212 "⏳ Executando código no Tinker..."
+  
+  # Injeta o código usando stdin (-i) diretamente no processo do tinker dentro do pod
+  local result=$(echo "$code" | kubectl exec -i "$pod" -c "$cont" -n "$ns" -- php artisan tinker 2>&1)
+  
+  if command -v bat &>/dev/null; then
+    echo "$result" | bat -l php --style=plain --paging=always
+  elif command -v batcat &>/dev/null; then
+    echo "$result" | batcat -l php --style=plain --paging=always
+  else
+    echo "$result" | gum pager
+  fi
+}
+
 create_namespace() {
   local new_ns=$(gum input --placeholder "Nome do novo namespace:")
   [[ -z "$new_ns" ]] && return
@@ -299,6 +325,7 @@ while true; do
     "🔴 Logs (Real-time)" \
     "🐚 Shell (Exec)" \
     "📄 Ver .env" \
+    "🐘 Laravel Tinker (Multi-linha)" \
     "🔓 Decodificar Secret" \
     "⚠️  Radar de Eventos" \
     "✏️  Editor (ConfigMap/Secret)" \
@@ -338,6 +365,7 @@ while true; do
       [[ -n "$pod" ]] && cont=$(select_container "$pod")
       [[ -n "$pod" && -n "$cont" ]] && (kubectl exec -it "$pod" -c "$cont" -n "$ns" -- bash 2>/dev/null || kubectl exec -it "$pod" -c "$cont" -n "$ns" -- sh || { gum style --foreground 160 "❌ Erro de conexão. O Pod está rodando?"; sleep 3; }) ;;
     "📄 Ver .env") view_env ;;
+    "🐘 Laravel Tinker (Multi-linha)") laravel_tinker ;;
     "🔓 Decodificar Secret") decode_secret ;;
     "⚠️  Radar de Eventos") view_events ;;
     "✏️  Editor (ConfigMap/Secret)") live_edit ;;
