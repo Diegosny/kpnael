@@ -254,7 +254,6 @@ database_explorer() {
     fi
   fi
 
-  # Executa a query e limpa o warning chato do MySQL
   local result=$(docker exec -i "$target" sh -c "$query_cmd" 2>&1 | grep -v "Using a password on the command line interface can be insecure.")
 
   if command -v bat &>/dev/null; then
@@ -263,6 +262,42 @@ database_explorer() {
     echo "$result" | batcat -l sql --style=plain --paging=always
   else
     echo "$result" | gum pager
+  fi
+}
+
+run_quick_container() {
+  gum style --foreground 212 "🚀 Assistente de Criação Rápida de Container"
+  
+  local image=$(gum input --placeholder "Nome da imagem (ex: nginx:alpine, redis:latest):")
+  [[ -z "$image" ]] && return
+  
+  local name=$(gum input --placeholder "Nome do container (Opcional, Enter para aleatório):")
+  local ports=$(gum input --placeholder "Mapeamento de portas (ex: 8080:80) (Opcional):")
+  local envs=$(gum input --placeholder "Variáveis/Flags extras (ex: -e MYSQL_ROOT_PASSWORD=123) (Opcional):")
+  
+  local cmd="docker run -d"
+  
+  if [[ -n "$name" ]]; then
+    cmd="$cmd --name \"$name\""
+  fi
+  
+  if [[ -n "$ports" ]]; then
+    cmd="$cmd -p \"$ports\""
+  fi
+  
+  if [[ -n "$envs" ]]; then
+    cmd="$cmd $envs"
+  fi
+  
+  cmd="$cmd \"$image\""
+  
+  gum style --foreground 240 "Executando: $cmd"
+  
+  # Usamos o eval para que as flags enviadas em $envs sejam interpretadas corretamente pelo bash
+  if eval "$cmd" >/dev/null; then
+    msg_success "Container iniciado com sucesso!"
+  else
+    msg_error "Falha ao iniciar. Verifique se a imagem existe ou se a porta já está em uso."
   fi
 }
 
@@ -276,6 +311,7 @@ while true; do
   gum style --border normal --margin 1 --padding 1 --border-foreground "$PRIMARY_COLOR" "🚀 DPNAEL | $stats | Disco: $disco"
 
   action=$(printf "%s\n" \
+    "🚀 Rodar Container Rápido (Run)" \
     "🔍 Logs" \
     "🐚 Shell" \
     "🐘 Laravel Tinker (Multi-linha)" \
@@ -297,6 +333,7 @@ while true; do
     | fzf --prompt="Menu > " --height=85% --reverse --border --ansi || echo "")
 
   case "$action" in
+    "🚀 Rodar Container Rápido (Run)") run_quick_container ;;
     "🔍 Logs")
       target=$(fzf_select "container" "{{.Names}}" "$icon_container")
       [[ -n "$target" ]] && (docker logs -f --tail 100 "$target" | gum pager || { msg_error "Erro ao ler logs."; }) ;;
