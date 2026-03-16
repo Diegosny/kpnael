@@ -2,9 +2,9 @@ name: 🛡️ Inspeção de Qualidade (ShellCheck)
 
 on:
     push:
-        branches: ["master"]
+        branches: ["main"]
     pull_request:
-        branches: ["master"]
+        branches: ["main"]
 
 jobs:
     shellcheck:
