@@ -1,0 +1,22 @@
+name: 🛡️ Inspeção de Qualidade (ShellCheck)
+
+on:
+    push:
+        branches: ["master"]
+    pull_request:
+        branches: ["master"]
+
+jobs:
+    shellcheck:
+        name: Analisar Scripts Bash
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: 📥 Clonar o Repositório
+              uses: actions/checkout@v4
+
+            - name: 🔍 Rodar ShellCheck
+              uses: ludeeus/action-shellcheck@master
+              with:
+                  scandir: "./"
+                  ignore: SC2086,SC2155,SC2046,SC2002
