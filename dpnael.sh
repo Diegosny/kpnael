@@ -59,11 +59,10 @@ set_local_domain() {
   local target=$(fzf_select "container" "{{.Names}}" "$icon_container")
   [[ -z "$target" ]] && return
 
-  local ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$target" 2>/dev/null || echo "")
-  [[ -z "$ip" ]] && { msg_error "Container sem IP interno (Bridge) ativo."; return; }
-
   local domain=$(gum input --placeholder "Domínio (ex: api.local):")
   [[ -z "$domain" ]] && return
+
+  local ip="127.0.0.1"
 
   if [[ "$OSTYPE" == "darwin"* ]]; then
     sudo sed -i '' "/[[:space:]]$domain\t# dpnael:/d" /etc/hosts 2>/dev/null || true
@@ -72,7 +71,10 @@ set_local_domain() {
   fi
   
   echo -e "$ip\t$domain\t# dpnael:$target" | sudo tee -a /etc/hosts > /dev/null
+  
   msg_success "Domínio mapeado!"
+  gum style --foreground 240 "⚠️ Dica: No navegador, não esqueça de colocar a porta exposta! (Ex: http://$domain:3000)"
+  sleep 4
 }
 
 remove_local_domain() {
