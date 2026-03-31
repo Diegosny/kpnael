@@ -27,4 +27,4 @@ Pare de digitar comandos gigantes e foque no que importa.
 Rode o comando abaixo no seu terminal. O script cuidará de instalar todas as dependências mágicas (`fzf`, `gum`, `jq` e `kubectl`) e configurar os binários de forma segura:
 
 ```bash
-curl -fsSL [https://raw.githubusercontent.com/Diegosny/kpnael/main/install.sh](https://raw.githubusercontent.com/Diegosny/kpnael/main/install.sh) | bash
+curl -fsSL https://raw.githubusercontent.com/Diegosny/kpnael/master/install.sh | bash
